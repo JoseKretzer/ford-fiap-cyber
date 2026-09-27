@@ -1,0 +1,29 @@
+# SCA contínuo: o Dependabot abre PRs de atualização. Cada PR passa pelo pipeline completo
+# (testes + scans) antes de ser aceito. Para Actions, o PR já traz o SHA novo fixado.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories: [/api, /iot]
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 10
+    labels: [dependencies, security]
+    groups:
+      python-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule: { interval: weekly, day: monday }
+    labels: [dependencies, security]
+
+  - package-ecosystem: docker
+    directories: [/api, /iot]
+    schedule: { interval: weekly }
+
+  - package-ecosystem: docker-compose
+    directory: /infra
+    schedule: { interval: weekly }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

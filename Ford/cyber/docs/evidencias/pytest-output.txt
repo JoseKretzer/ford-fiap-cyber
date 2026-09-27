@@ -1,0 +1,64 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\jose.rodriguez\Desktop\Ford\cyber\.venv\Scripts\python.exe
+rootdir: C:\Users\jose.rodriguez\Desktop\Ford\cyber\api
+plugins: anyio-4.15.1
+collecting ... collected 49 items
+
+tests/test_security.py::TestAuthentication::test_health_is_public PASSED [  2%]
+tests/test_security.py::TestAuthentication::test_login_success_returns_short_lived_jwt PASSED [  4%]
+tests/test_security.py::TestAuthentication::test_login_failure_is_generic[gestor.sp01] PASSED [  6%]
+tests/test_security.py::TestAuthentication::test_login_failure_is_generic[usuario.inexistente] PASSED [  8%]
+tests/test_security.py::TestAuthentication::test_protected_endpoint_without_token PASSED [ 10%]
+tests/test_security.py::TestAuthentication::test_rejects_bad_tokens[expirado] PASSED [ 12%]
+tests/test_security.py::TestAuthentication::test_rejects_bad_tokens[assinatura_errada] PASSED [ 14%]
+tests/test_security.py::TestAuthentication::test_rejects_bad_tokens[audience_errada] PASSED [ 16%]
+tests/test_security.py::TestAuthentication::test_rejects_bad_tokens[issuer_errado] PASSED [ 18%]
+tests/test_security.py::TestAuthentication::test_rejects_bad_tokens[perfil_invalido] PASSED [ 20%]
+tests/test_security.py::TestAuthentication::test_rejects_bad_tokens[alg_none] PASSED [ 22%]
+tests/test_security.py::TestAuthentication::test_rejects_token_missing_required_claim PASSED [ 24%]
+tests/test_security.py::TestAuthentication::test_tampered_payload_is_rejected PASSED [ 26%]
+tests/test_security.py::TestAuthentication::test_logout_revokes_token PASSED [ 28%]
+tests/test_security.py::TestAuthorization::test_consultor_cannot_read_audit PASSED [ 30%]
+tests/test_security.py::TestAuthorization::test_consultor_cannot_read_service_share PASSED [ 32%]
+tests/test_security.py::TestAuthorization::test_gestor_reads_own_dealer_service_share PASSED [ 34%]
+tests/test_security.py::TestAuthorization::test_gestor_cannot_read_other_dealer PASSED [ 36%]
+tests/test_security.py::TestAuthorization::test_bola_lead_of_other_dealer_returns_404 PASSED [ 38%]
+tests/test_security.py::TestAuthorization::test_leads_are_scoped_to_dealer PASSED [ 40%]
+tests/test_security.py::TestAuthorization::test_admin_accesses_any_dealer PASSED [ 42%]
+tests/test_security.py::TestAuthorization::test_mass_assignment_is_blocked PASSED [ 44%]
+tests/test_security.py::TestHardening::test_valid_lead_update PASSED     [ 46%]
+tests/test_security.py::TestHardening::test_invalid_input_rejected[enum_invalido] PASSED [ 48%]
+tests/test_security.py::TestHardening::test_invalid_input_rejected[texto_longo] PASSED [ 51%]
+tests/test_security.py::TestHardening::test_invalid_input_rejected[log_injection] PASSED [ 53%]
+tests/test_security.py::TestHardening::test_ml_input_bounds PASSED       [ 55%]
+tests/test_security.py::TestHardening::test_ml_prediction_ok PASSED      [ 57%]
+tests/test_security.py::TestHardening::test_login_rate_limit PASSED      [ 59%]
+tests/test_security.py::TestHardening::test_payload_too_large PASSED     [ 61%]
+tests/test_security.py::TestHardening::test_security_headers PASSED      [ 63%]
+tests/test_security.py::TestHardening::test_cors_blocks_unknown_origin PASSED [ 65%]
+tests/test_security.py::TestHardening::test_minimum_app_version[versao_antiga] PASSED [ 67%]
+tests/test_security.py::TestHardening::test_minimum_app_version[versao_minima] PASSED [ 69%]
+tests/test_security.py::TestHardening::test_minimum_app_version[versao_nova] PASSED [ 71%]
+tests/test_security.py::TestHardening::test_minimum_app_version[versao_invalida] PASSED [ 73%]
+tests/test_security.py::TestHardening::test_prod_requires_model_hash PASSED [ 75%]
+tests/test_security.py::TestHardening::test_unhandled_error_does_not_leak PASSED [ 77%]
+tests/test_security.py::TestDataProtection::test_pii_encrypted_at_rest PASSED [ 79%]
+tests/test_security.py::TestDataProtection::test_cpf_masked_in_api PASSED [ 81%]
+tests/test_security.py::TestDataProtection::test_ciphertext_tampering_detected PASSED [ 83%]
+tests/test_security.py::TestDataProtection::test_ciphertext_cannot_be_moved_between_fields PASSED [ 85%]
+tests/test_security.py::TestDataProtection::test_key_rotation_reads_old_data PASSED [ 87%]
+tests/test_security.py::TestDataProtection::test_blind_index_search PASSED [ 89%]
+tests/test_security.py::TestDataProtection::test_mask_cpf PASSED         [ 91%]
+tests/test_security.py::TestDataProtection::test_model_integrity_check PASSED [ 93%]
+tests/test_security.py::TestAuditLogging::test_login_events_logged_without_secrets PASSED [ 95%]
+tests/test_security.py::TestAuditLogging::test_authz_denied_is_audited PASSED [ 97%]
+tests/test_security.py::TestAuditLogging::test_critical_change_is_audited PASSED [100%]
+
+============================== warnings summary ===============================
+..\.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\jose.rodriguez\Desktop\Ford\cyber\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\jose.rodriguez\Desktop\Ford\cyber\docs\evidencias\pytest-report.xml -
+======================= 49 passed, 1 warning in 40.10s ========================

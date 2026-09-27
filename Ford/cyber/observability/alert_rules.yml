@@ -1,0 +1,102 @@
+# Regras de alerta do Prometheus. Cada uma aponta para um playbook (docs, seção 3.4).
+# Os limiares foram validados contra a simulação de ataques (docs, seção 3.3):
+# todos os três ataques simulados disparam o alerta correspondente e o tráfego normal não dispara nenhum.
+groups:
+  - name: vinshare-seguranca
+    rules:
+      - alert: ForcaBrutaLogin
+        # Soma falhas + tentativas barradas pelo rate limit: com o bloqueio ativo, a força bruta
+        # aparece quase toda como "bloqueada", não como "senha errada".
+        expr: |
+          (sum(rate(vinshare_auth_login_total{result="failure"}[5m])) or vector(0))
+          + (sum(rate(vinshare_rate_limited_total{scope=~"login.*"}[5m])) or vector(0))
+          > 30 / 300
+        for: 1m
+        labels: { severity: critical, area: api, playbook: PB-01 }
+        annotations:
+          summary: "Mais de 30 tentativas de login falhas/bloqueadas em 5 minutos"
+          description: "Possível força bruta ou credential stuffing. Ver client_ip em auth.login.* no Loki."
+
+      - alert: SondagemDeAutorizacao
+        # Com a interface escondendo o que o perfil não pode fazer, 403 legítimo é raro:
+        # mais de 5 em 5 min indica alguém chamando a API direto.
+        expr: sum(rate(vinshare_authz_denied_total[5m])) > 5 / 300
+        for: 1m
+        labels: { severity: critical, area: api, playbook: PB-02 }
+        annotations:
+          summary: "Mais de 5 acessos negados (403/escopo) em 5 minutos"
+          description: "Usuário pode estar enumerando leads de outras concessionárias (BOLA). Ver user_id em authz.denied."
+
+      - alert: TokensForjadosOuExpirados
+        expr: sum(rate(vinshare_auth_token_rejected_total{reason="invalid_token"}[5m])) > 20 / 300
+        for: 1m
+        labels: { severity: critical, area: api, playbook: PB-03 }
+        annotations:
+          summary: "Mais de 20 JWT com assinatura/claims inválidos em 5 minutos"
+          description: "Tentativa de forjar token ou vazamento do segredo. Avaliar rotação do JWT_SECRET."
+
+  - name: vinshare-disponibilidade
+    rules:
+      - alert: ErrosServidor
+        expr: |
+          sum(rate(vinshare_http_requests_total{status=~"5.."}[5m]))
+          / sum(rate(vinshare_http_requests_total[5m])) > 0.02
+        for: 5m
+        labels: { severity: critical, area: api }
+        annotations:
+          summary: "Taxa de erro 5xx acima de 2%"
+
+      - alert: LatenciaAlta
+        expr: histogram_quantile(0.95, sum by (le) (rate(vinshare_http_request_duration_seconds_bucket[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning, area: api }
+        annotations:
+          summary: "p95 de latência acima de 500 ms"
+
+  - name: vinshare-mobile
+    rules:
+      - alert: AppDesatualizadoEmUso
+        # Requisições barradas com 426 (versão abaixo de MIN_APP_VERSION ou versão forjada)
+        expr: sum(rate(vinshare_mobile_requests_total{result="bloqueada"}[15m])) > 10 / 900
+        for: 15m
+        labels: { severity: warning, area: mobile }
+        annotations:
+          summary: "App com versão não suportada ainda tentando acessar a API"
+          description: "Reforçar comunicação de atualização; se a versão for 'outra', investigar cliente não oficial."
+
+  - name: vinshare-iot
+    rules:
+      - alert: TelemetriaRejeitada
+        # replay, janela de tempo, esquema ou odômetro regredindo (serviço de ingestão)
+        expr: sum(rate(vinshare_iot_messages_total{result!="aceita"}[10m])) > 10 / 600
+        for: 1m
+        labels: { severity: critical, area: iot, playbook: PB-04 }
+        annotations:
+          summary: "Mais de 10 mensagens de telemetria rejeitadas em 10 minutos"
+          description: "Ver reason e device_id em iot.telemetry.rejected. Replay/odômetro = possível dispositivo comprometido."
+
+      - alert: TelemetriaParou
+        expr: time() - max(vinshare_iot_last_accepted_timestamp_seconds) > 900
+        for: 5m
+        labels: { severity: warning, area: iot }
+        annotations:
+          summary: "Nenhuma telemetria aceita há 15 minutos"
+
+  - name: vinshare-ml
+    rules:
+      - alert: DriftScoreChurn
+        expr: |
+          (sum(rate(vinshare_ml_churn_score_bucket{le="0.7"}[1h])) / sum(rate(vinshare_ml_churn_score_count[1h])))
+          < 0.5
+        for: 30m
+        labels: { severity: warning, area: ml, playbook: PB-05 }
+        annotations:
+          summary: "Mais de 50% das predições com risco alto"
+          description: "Distribuição do score mudou (drift ou envenenamento de dados). Revisar entradas e retreinar."
+
+      - alert: VolumePredicoesAnomalo
+        expr: sum(rate(vinshare_ml_predictions_total[5m])) > 500 / 300
+        for: 5m
+        labels: { severity: warning, area: ml, playbook: PB-05 }
+        annotations:
+          summary: "Volume anormal de predições (possível extração do modelo)"

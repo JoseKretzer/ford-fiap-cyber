@@ -1,0 +1,72 @@
+# Regras SAST próprias do VIN Share (complementam os rulesets OWASP do Semgrep).
+# Cada regra corresponde a uma ameaça da análise STRIDE (docs, seção 4.1).
+# Testadas localmente: `semgrep scan --config .semgrep/ --test .semgrep/tests/`
+rules:
+  - id: jwt-decode-without-verification
+    languages: [python]
+    severity: ERROR
+    message: "JWT decodificado sem verificar assinatura; qualquer pessoa pode forjar o token (S-02)."
+    pattern-either:
+      - pattern: |
+          jwt.decode(..., options={..., "verify_signature": False, ...}, ...)
+      - pattern: |
+          jwt.decode(..., algorithms=[..., "none", ...], ...)
+
+  - id: jwt-decode-without-algorithms
+    languages: [python]
+    severity: ERROR
+    message: "Informe algorithms=[...] explicitamente no jwt.decode (evita confusão de algoritmo, S-02)."
+    patterns:
+      - pattern: jwt.decode(...)
+      - pattern-not: jwt.decode(..., algorithms=$ALGS, ...)
+
+  - id: pickle-load-model
+    languages: [python]
+    severity: ERROR
+    message: "Não carregue modelos de ML com pickle/joblib (execução de código arbitrário, T-03). Use JSON/ONNX + hash."
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: joblib.load(...)
+
+  - id: logging-sensitive-field
+    languages: [python]
+    severity: WARNING
+    message: "Possível dado sensível em log (senha, token, CPF). Viola LGPD e ASVS 7.1.1 (I-04)."
+    pattern-either:
+      - pattern: |
+          $LOG.$M(..., extra={..., "password": $X, ...}, ...)
+      - pattern: |
+          $LOG.$M(..., extra={..., "token": $X, ...}, ...)
+      - pattern: |
+          $LOG.$M(..., extra={..., "cpf": $X, ...}, ...)
+
+  - id: route-without-auth-dependency
+    languages: [python]
+    severity: WARNING
+    message: "Endpoint sem dependência de autenticação. Confirme se é realmente público (E-01)."
+    patterns:
+      - pattern: |
+          @router.$METHOD($PATH, ...)
+          def $F(...): ...
+      - pattern-not: |
+          @router.$METHOD($PATH, ...)
+          def $F(..., $P: $T = Depends(...), ...): ...
+      - pattern-not: |
+          @router.$METHOD($PATH, ...)
+          def $F(..., $P = Depends(...), ...): ...
+      - metavariable-regex:
+          metavariable: $PATH
+          regex: ^["'](?!/health|/auth/login)
+
+  - id: mqtt-without-tls
+    languages: [python]
+    severity: ERROR
+    message: "Cliente MQTT na porta 1883 (sem TLS); telemetria veicular trafegaria em texto claro (I-06)."
+    pattern: $C.connect($HOST, 1883, ...)
+
+  - id: asyncstorage-token
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: "Token salvo no AsyncStorage (texto claro no aparelho). Use expo-secure-store (OWASP M9, I-05)."
+    pattern: AsyncStorage.setItem($K, $TOKEN)

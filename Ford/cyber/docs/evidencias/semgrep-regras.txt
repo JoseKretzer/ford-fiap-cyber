@@ -1,0 +1,2 @@
+﻿Regras: 7 | casos positivos: 9 | casos negativos: 6
+Detectados corretamente: 9/9 | falsos positivos: 0

@@ -1,0 +1,136 @@
+# Kubernetes (AKS) - API VIN Share com hardening. Verificado pelo Trivy (scan-type: config).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vinshare-api
+  namespace: vinshare
+automountServiceAccountToken: false      # a API não fala com o kube-apiserver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vinshare-api
+  namespace: vinshare
+  labels: { app: vinshare-api }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: vinshare-api }
+  template:
+    metadata:
+      labels: { app: vinshare-api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: vinshare-api
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api
+          # Sempre por digest (imutável e assinado). O pipeline troca este digest-placeholder pelo da imagem aprovada.
+          image: ghcr.io/org/ford-vinshare/vinshare-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - { name: APP_ENV, value: prod }
+            - { name: CORS_ORIGINS, value: "https://app.vinshare.example" }
+            - { name: MIN_APP_VERSION, value: "1.0.0" }
+            - { name: MODEL_SHA256, value: MODEL_SHA256_VALUE }   # gerado pelo pipeline; sem ele a API não sobe em prod
+          envFrom:
+            - secretRef:
+                name: vinshare-api-secrets     # sincronizado do Azure Key Vault (CSI Secrets Store)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:                           # evita que um pod esgote o nó (DoS)
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: 8000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/v1/health, port: 8000 }
+            periodSeconds: 20
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vinshare-api
+  namespace: vinshare
+spec:
+  selector: { app: vinshare-api }
+  ports:
+    - port: 80
+      targetPort: 8000
+---
+# Default deny: só o Ingress (porta 8000) e o Prometheus (métricas) falam com a API;
+# a API só sai para o banco e o DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vinshare-api
+  namespace: vinshare
+spec:
+  podSelector:
+    matchLabels: { app: vinshare-api }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { port: 8000, protocol: TCP }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { port: 53, protocol: UDP }
+    - to:
+        - ipBlock: { cidr: 10.20.0.0/24 }       # sub-rede privada do Azure Database for PostgreSQL
+      ports:
+        - { port: 5432, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vinshare-api
+  namespace: vinshare
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/limit-rps: "20"          # 2ª camada de rate limit, antes da API
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location = /metrics { return 404; }
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [api.vinshare.example]
+      secretName: vinshare-tls
+  rules:
+    - host: api.vinshare.example
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service: { name: vinshare-api, port: { number: 80 } }

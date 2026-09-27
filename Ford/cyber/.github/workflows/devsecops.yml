@@ -1,0 +1,345 @@
+# Pipeline DevSecOps - Ford VIN Share
+# Roda em todo push/PR. Nenhuma etapa de segurança é "informativa": se um gate falha,
+# o merge é bloqueado (branch protection exige os checks) e o deploy não acontece.
+#
+#   commit -> [1 Secret Scan] -> [2 SAST] -> [3 SCA] -> [4 Testes] -> [5 Build + Container/IaC Scan + SBOM + assinatura]
+#          -> [6 Deploy staging] -> [7 DAST] -> [8 Deploy produção (aprovação manual)]
+#
+# Toda Action de terceiros está fixada pelo SHA do commit (tag só no comentário): tags podem ser
+# reescritas por quem compromete o repositório da Action (caso tj-actions/changed-files, mar/2025).
+# O Dependabot (ecosystem github-actions) abre PR quando sai versão nova, já com o SHA novo.
+
+name: devsecops
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:                 # "pull_request" (e não "pull_request_target"): PR de fork roda sem segredos
+    branches: [main, develop]
+  schedule:
+    - cron: "0 6 * * 1"         # toda segunda 06:00 UTC: re-scan (CVEs novas em código que não mudou)
+
+permissions:
+  contents: read                # menor privilégio por padrão; cada job pede só o que precisa
+
+concurrency:
+  group: devsecops-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  TRIVY_VERSION: v0.74.0
+
+jobs:
+  # ------------------------------------------------------------------ 1. Secret Scanning
+  secret-scan:
+    name: 1 · Secret scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0          # varre TODO o histórico, não só o último commit
+          persist-credentials: false
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --config /repo/.gitleaks.toml --redact \
+            --report-format sarif --report-path /repo/gitleaks.sarif --exit-code 1
+      - name: Publicar resultado na aba Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  # ------------------------------------------------------------------ 2. SAST
+  sast:
+    name: 2 · SAST (Semgrep + Bandit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install --quiet semgrep==1.178.0 bandit==1.9.4
+      - name: Validar as regras próprias contra os casos de teste
+        run: python .semgrep/verificar_regras.py
+      - name: Semgrep (regras OWASP + regras próprias do projeto)
+        run: |
+          semgrep scan --metrics=off \
+            --config p/python --config p/owasp-top-ten --config p/jwt \
+            --config p/typescript --config .semgrep/vinshare-rules.yml \
+            --exclude .semgrep \
+            --severity ERROR --severity WARNING \
+            --sarif --output semgrep.sarif --error
+      - name: Bandit (padrões inseguros em Python; severidade média ou maior bloqueia)
+        run: bandit -r api/app iot -x iot/tests -ll -ii
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # ------------------------------------------------------------------ 3. SCA
+  sca:
+    name: 3 · SCA (pip-audit + npm audit + Dependency Review)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: pip-audit (API e ingestão IoT)
+        run: |
+          pip install --quiet pip-audit==2.10.1
+          pip-audit -r api/requirements.txt -r iot/requirements.txt --strict --vulnerability-service osv
+      - name: npm audit (app mobile)
+        if: hashFiles('mobile/package-lock.json') != ''
+        working-directory: mobile
+        run: npm audit --omit=dev --audit-level=high
+      - name: Dependency Review (bloqueia PR que adiciona dependência vulnerável ou licença fora da lista)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, PSF-2.0, MPL-2.0, 0BSD, Unlicense
+          comment-summary-in-pr: always
+
+  # ------------------------------------------------------------------ 4. Testes (inclui testes de segurança)
+  tests:
+    name: 4 · Testes automatizados (API + IoT)
+    runs-on: ubuntu-latest
+    needs: [secret-scan, sast, sca]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            api/requirements-dev.txt
+            iot/requirements.txt
+      - run: pip install -r api/requirements-dev.txt -r iot/requirements.txt cryptography
+      - name: API (autenticação, autorização, validação, criptografia, logs)
+        working-directory: api
+        run: pytest -v --junitxml=../pytest-api.xml
+      - name: IoT (anti-replay, esquema, handshake mTLS)
+        working-directory: iot
+        run: pytest -v --junitxml=../pytest-iot.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pytest-reports
+          path: pytest-*.xml
+
+  # ------------------------------------------------------------------ 5. Build + Container Security + IaC + SBOM
+  build-and-scan:
+    name: 5 · Build, Trivy (imagens + IaC), SBOM e assinatura
+    runs-on: ubuntu-latest
+    needs: tests
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write           # assinatura keyless (cosign / Sigstore)
+    outputs:
+      api_digest: ${{ steps.push_api.outputs.digest }}
+      model_sha256: ${{ steps.model.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Nome das imagens (GHCR exige minúsculas)
+        run: |
+          echo "IMAGE_API=ghcr.io/${GITHUB_REPOSITORY,,}/vinshare-api" >> "$GITHUB_ENV"
+          echo "IMAGE_IOT=ghcr.io/${GITHUB_REPOSITORY,,}/vinshare-ingestion" >> "$GITHUB_ENV"
+      - name: Hash do modelo de ML (vira MODEL_SHA256 no deploy; a API recusa modelo diferente)
+        id: model
+        run: echo "sha256=$(sha256sum api/app/churn_model.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Trivy - IaC / misconfiguration (Dockerfiles, Kubernetes)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+      - name: Build das imagens para scan (sem push)
+        run: |
+          docker buildx build --load -t vinshare-api:scan api
+          docker buildx build --load -t vinshare-ingestion:scan iot
+
+      - name: Trivy - vulnerabilidades da imagem da API
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: vinshare-api:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: sarif
+          output: trivy-api.sarif
+
+      - name: Trivy - vulnerabilidades da imagem da ingestão IoT
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: vinshare-ingestion:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        with:
+          sarif_file: trivy-api.sarif
+          category: trivy-image
+
+      - name: SBOM (CycloneDX)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: vinshare-api:scan
+          format: cyclonedx
+          output: sbom-api.cdx.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom-*.cdx.json
+
+      - name: Login no registry (só em main)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push da imagem aprovada (API)
+        id: push_api
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: api
+          push: true
+          tags: ${{ env.IMAGE_API }}:${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Push da imagem aprovada (ingestão IoT)
+        id: push_iot
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: iot
+          push: true
+          tags: ${{ env.IMAGE_IOT }}:${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Assinar imagens (cosign keyless)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cosign sign --yes "${IMAGE_API}@${{ steps.push_api.outputs.digest }}"
+          cosign sign --yes "${IMAGE_IOT}@${{ steps.push_iot.outputs.digest }}"
+
+  # ------------------------------------------------------------------ 6. Deploy em staging
+  deploy-staging:
+    name: 6 · Deploy staging
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write           # login no Azure por OIDC: nenhuma credencial fixa guardada no GitHub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Aplicar manifests (imagem por digest, hash do modelo)
+        run: |
+          IMAGE_API="ghcr.io/${GITHUB_REPOSITORY,,}/vinshare-api"
+          az aks get-credentials -g rg-vinshare-stg -n aks-vinshare-stg
+          sed -i -E "s|image: \S+/vinshare-api@sha256:[0-9a-f]{64}|image: ${IMAGE_API}@${{ needs.build-and-scan.outputs.api_digest }}|" infra/k8s/api.yaml
+          sed -i "s|MODEL_SHA256_VALUE|${{ needs.build-and-scan.outputs.model_sha256 }}|" infra/k8s/api.yaml
+          kubectl apply -n vinshare -f infra/k8s/
+          kubectl rollout status -n vinshare deploy/vinshare-api --timeout=120s
+
+  # ------------------------------------------------------------------ 7. DAST
+  dast:
+    name: 7 · DAST (OWASP ZAP baseline em staging)
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
+        with:
+          target: https://api-stg.vinshare.example/api/v1/health
+          rules_file_name: .zap/rules.tsv
+          fail_action: true
+
+  # ------------------------------------------------------------------ 8. Produção
+  deploy-prod:
+    name: 8 · Deploy produção (aprovação manual)
+    runs-on: ubuntu-latest
+    needs: [build-and-scan, dast]
+    environment: production     # exige aprovação de 1 revisor de segurança (GitHub Environments)
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Verificar assinatura antes do deploy
+        run: |
+          IMAGE_API="ghcr.io/${GITHUB_REPOSITORY,,}/vinshare-api"
+          cosign verify "${IMAGE_API}@${{ needs.build-and-scan.outputs.api_digest }}" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/devsecops.yml@refs/heads/main$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy
+        run: |
+          IMAGE_API="ghcr.io/${GITHUB_REPOSITORY,,}/vinshare-api"
+          az aks get-credentials -g rg-vinshare-prd -n aks-vinshare-prd
+          sed -i -E "s|image: \S+/vinshare-api@sha256:[0-9a-f]{64}|image: ${IMAGE_API}@${{ needs.build-and-scan.outputs.api_digest }}|" infra/k8s/api.yaml
+          sed -i "s|MODEL_SHA256_VALUE|${{ needs.build-and-scan.outputs.model_sha256 }}|" infra/k8s/api.yaml
+          kubectl apply -n vinshare -f infra/k8s/
+          kubectl rollout status -n vinshare deploy/vinshare-api --timeout=180s

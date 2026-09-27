@@ -1,0 +1,33 @@
+# Gitleaks: regras padrão + regras específicas do projeto VIN Share
+title = "gitleaks - Ford VIN Share"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "vinshare-jwt-secret"
+description = "Segredo de assinatura JWT gravado no código"
+regex = '''(?i)JWT_SECRET\s*[=:]\s*["']?[A-Za-z0-9_\-+/=]{16,}'''
+tags = ["jwt", "secret"]
+
+[[rules]]
+id = "vinshare-data-key"
+description = "Chave AES/HMAC de dados pessoais gravada no código"
+regex = '''(?i)(DATA_KEY_B64|INDEX_KEY_B64)\s*[=:]\s*["']?[A-Za-z0-9+/]{40,}={0,2}'''
+tags = ["crypto", "lgpd"]
+
+[[rules]]
+id = "mqtt-password"
+description = "Senha de broker MQTT em texto claro"
+regex = '''(?i)mqtt[_-]?pass(word)?\s*[=:]\s*["'][^"']{6,}["']'''
+tags = ["iot"]
+
+[[rules]]
+id = "private-key-file"
+description = "Chave privada (certificado de dispositivo IoT, TLS)"
+regex = '''-----BEGIN ((EC|RSA|OPENSSH) )?PRIVATE KEY-----'''
+tags = ["iot", "tls"]
+
+[allowlist]
+description = "Arquivos de exemplo sem segredos reais"
+paths = ['''(^|[/\\])\.env\.example$''', '''docs[/\\]evidencias[/\\]''', '''(^|[/\\])\.venv[/\\]''']

@@ -1,0 +1,31 @@
+// Grafana Alloy: coleta os logs (stdout JSON) dos containers e envia ao Loki.
+// Substitui o Promtail (descontinuado). Em produção (AKS) roda como DaemonSet.
+// ATENÇÃO: o socket do Docker dá controle total do host; aqui é montado SOMENTE LEITURA
+// e apenas no ambiente local. No AKS a coleta é feita por arquivos de log do nó.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  labels        = { app = "vinshare" }
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

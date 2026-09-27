@@ -1,0 +1,85 @@
+# Ambiente local completo: API + broker MQTT (mTLS) + ingestão IoT + observabilidade
+# (Prometheus, Alertmanager, Loki, Alloy, Grafana).
+# Uso: ver README ("Stack local completa"). Portas publicadas só em 127.0.0.1.
+x-hardening: &hardening
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+services:
+  api:
+    <<: *hardening
+    build: ../api
+    env_file: .env                       # .env está no .gitignore; nunca vai para o repositório
+    ports: ["127.0.0.1:8000:8000"]
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  mosquitto:
+    <<: *hardening
+    image: eclipse-mosquitto:2.0.22
+    ports: ["127.0.0.1:8883:8883"]       # somente TLS; a 1883 (texto claro) não existe
+    volumes:
+      - ../iot/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../iot/mosquitto/acl.conf:/mosquitto/config/acl.conf:ro
+      - ../iot/certs:/mosquitto/certs:ro
+
+  ingestion:
+    <<: *hardening
+    build: ../iot
+    environment:
+      MQTT_HOST: mosquitto
+      CERT_DIR: /certs
+    volumes:
+      - ../iot/certs/ca.crt:/certs/ca.crt:ro
+      - ../iot/certs/ingestion-service.crt:/certs/ingestion-service.crt:ro
+      - ../iot/certs/ingestion-service.key:/certs/ingestion-service.key:ro
+    depends_on: [mosquitto]
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    ports: ["127.0.0.1:9090:9090"]
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    volumes:
+      - ../observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    secrets: [teams_webhook_time, teams_webhook_seguranca]
+    ports: ["127.0.0.1:9093:9093"]
+
+  loki:
+    image: grafana/loki:3.7.8
+    ports: ["127.0.0.1:3100:3100"]
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command: ["run", "/etc/alloy/config.alloy"]
+    volumes:
+      - ../observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # só no ambiente local (ver comentário no config)
+    depends_on: [loki]
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    secrets: [grafana_admin]
+    volumes:
+      - ../observability/grafana:/etc/grafana/provisioning/dashboards:ro
+      - ../observability/grafana-datasources:/etc/grafana/provisioning/datasources:ro
+    ports: ["127.0.0.1:3000:3000"]
+
+secrets:                                 # arquivos gerados localmente, ignorados pelo git
+  grafana_admin:
+    file: ./grafana_admin.txt
+  teams_webhook_time:
+    file: ./teams_webhook_time.txt
+  teams_webhook_seguranca:
+    file: ./teams_webhook_seguranca.txt

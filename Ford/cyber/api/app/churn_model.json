@@ -1,0 +1,20 @@
+{
+  "version": "churn-logreg-1.0.0",
+  "intercept": -2.1,
+  "coefficients": {
+    "vehicle_age_years": 0.22,
+    "km_since_last_service_10k": 0.35,
+    "months_since_last_visit": 0.09,
+    "services_last_24m": -0.45,
+    "warranty_active": -1.1,
+    "connected_vehicle": -0.4
+  },
+  "model_offsets": {
+    "Ranger": 0.0,
+    "Territory": 0.1,
+    "Bronco Sport": 0.05,
+    "Maverick": 0.0,
+    "Transit": 0.3,
+    "Mustang Mach-E": -0.3
+  }
+}

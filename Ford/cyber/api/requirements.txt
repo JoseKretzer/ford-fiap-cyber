@@ -1,0 +1,9 @@
+# Versões fixadas: builds reprodutíveis e SCA (pip-audit/Dependabot) sabe exatamente o que está em uso
+fastapi==0.141.1
+starlette==1.7.0
+uvicorn==0.54.0
+pydantic==2.13.5
+PyJWT==2.15.0
+bcrypt==5.0.0
+cryptography==50.0.1
+prometheus_client==0.26.0

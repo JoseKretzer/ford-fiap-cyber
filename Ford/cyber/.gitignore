@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+infra/grafana_admin.txt
+infra/teams_webhook_*.txt
+iot/certs/
+*.key
+*.pem
+*.sarif
+node_modules/

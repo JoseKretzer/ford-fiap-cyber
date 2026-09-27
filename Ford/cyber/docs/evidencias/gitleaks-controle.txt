@@ -1,0 +1,10 @@
+﻿Controle positivo do Gitleaks 8.30.1 (pasta temporária com segredos FALSOS plantados de propósito)
+Arquivos: config_vazada.py (JWT_SECRET, DATA_KEY_B64, mqtt_password) e veh-123.key (chave privada EC)
+Resultado: 6 achados
+  vinshare-jwt-secret   config_vazada.py:1   (regra própria)
+  vinshare-data-key     config_vazada.py:2   (regra própria)
+  generic-api-key       config_vazada.py:2   (regra padrão)
+  mqtt-password         config_vazada.py:3   (regra própria)
+  private-key-file      veh-123.key:1        (regra própria)
+  private-key           veh-123.key:1        (regra padrão)
+Conclusão: as 4 regras próprias do .gitleaks.toml detectam o que foram feitas para detectar.

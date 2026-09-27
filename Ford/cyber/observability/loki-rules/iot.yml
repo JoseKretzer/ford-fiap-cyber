@@ -1,0 +1,12 @@
+# Regras de alerta sobre LOGS (ruler do Loki). O Mosquitto não exporta métrica de falha
+# de autenticação TLS; o sinal está no log do broker (connection_messages true).
+groups:
+  - name: vinshare-iot-logs
+    rules:
+      - alert: FalhaAutenticacaoMQTT
+        expr: |
+          sum(count_over_time({service="mosquitto"} |~ "(?i)(certificate verify failed|not authori[sz]ed|revoked)" [10m])) > 20
+        for: 1m
+        labels: { severity: critical, area: iot, playbook: PB-04 }
+        annotations:
+          summary: "Mais de 20 conexões MQTT recusadas em 10 min (certificado inválido, revogado ou sem permissão)"

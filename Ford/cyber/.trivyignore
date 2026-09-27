@@ -1,0 +1,9 @@
+# Exceções do Trivy = aceites de risco formais. Toda linha tem justificativa, dono e data de expiração:
+# quando expira, o pipeline volta a falhar e a exceção precisa ser revista.
+
+# KSV-0125 "Restrict container images to trusted registries" (MEDIUM)
+# O GHCR da organização é o registry oficial do projeto e a imagem é sempre referenciada por digest
+# e verificada com cosign antes do deploy. Plano: migrar para Azure Container Registry (pull por
+# identidade gerenciada do AKS) e ativar a política "trusted registries" do Azure Policy.
+# Dono: DevOps. Revisão: 31/03/2027.
+KSV-0125 exp:2027-03-31

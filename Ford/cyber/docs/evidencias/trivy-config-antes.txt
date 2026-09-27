@@ -1,0 +1,43 @@
+﻿
+Report Summary
+
+┌────────────────────┬────────────┬───────────────────┐
+│       Target       │    Type    │ Misconfigurations │
+├────────────────────┼────────────┼───────────────────┤
+│ api/Dockerfile     │ dockerfile │         0         │
+├────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/api.yaml │ kubernetes │         1         │
+├────────────────────┼────────────┼───────────────────┤
+│ iot/Dockerfile     │ dockerfile │         0         │
+└────────────────────┴────────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+infra/k8s/api.yaml (kubernetes)
+===============================
+Tests: 100 (SUCCESSES: 99, FAILURES: 1)
+Failures: 1 (LOW: 0, MEDIUM: 1, HIGH: 0, CRITICAL: 0)
+
+KSV-0013 (MEDIUM): Container 'api' of Deployment 'vinshare-api' should specify an image tag
+════════════════════════════════════════
+It is best to avoid using the ':latest' image tag when deploying containers in production. Doing so makes it hard to track which version of the image is running, and hard to roll back the version.
+
+See https://avd.aquasec.com/misconfig/ksv-0013
+────────────────────────────────────────
+ infra/k8s/api.yaml:35-64
+────────────────────────────────────────
+  35 ┌       containers:
+  36 │         - name: api
+  37 │           image: IMAGE_DIGEST                  # substituído no pipeline por imagem@sha256 (imutável e assinada)
+  38 │           imagePullPolicy: Always
+  39 │           ports:
+  40 │             - containerPort: 8000
+  41 │           env:
+  42 │             - { name: APP_ENV, value: prod }
+  43 └             - { name: CORS_ORIGINS, value: "https://app.vinshare.example" }
+  ..   
+────────────────────────────────────────
+
+
