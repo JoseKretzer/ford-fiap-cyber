@@ -18,7 +18,7 @@ Saídas reais das ferramentas (Gitleaks, Semgrep, Bandit, pip-audit, Trivy, pyte
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -r api\requirements-dev.txt -r iot\requirements.txt cryptography matplotlib python-docx semgrep bandit pip-audit
+.venv\Scripts\python -m pip install -r api\requirements-dev.txt -r iot\requirements.txt cryptography matplotlib python-docx defusedxml semgrep bandit pip-audit
 
 # Testes: API (49) e IoT (28, inclui handshake mTLS real)
 cd api; ..\.venv\Scripts\python -m pytest -v; cd ..\iot; ..\.venv\Scripts\python -m pytest -v; cd ..

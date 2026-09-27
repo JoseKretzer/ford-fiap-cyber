@@ -292,7 +292,7 @@ def arquitetura():
 
 
 def pipeline():
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET  # parser seguro contra XXE (Semgrep use-defused-xml-parse)
     n_tests = sum(int((ET.parse(ROOT / "docs" / "evidencias" / f).getroot().find("testsuite")
                        or ET.parse(ROOT / "docs" / "evidencias" / f).getroot()).get("tests"))
                   for f in ("pytest-report.xml", "pytest-iot-report.xml"))

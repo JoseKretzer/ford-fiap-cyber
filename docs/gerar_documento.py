@@ -5,7 +5,7 @@ e alertas vêm de docs/evidencias/ e observability/, então o documento sempre r
 Rode depois dos testes, das ferramentas, de simular_trafego.py e de gerar_figuras.py.
 """
 import json
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET  # parser seguro contra XXE e "XML bomb" (Semgrep use-defused-xml-parse)
 from collections import Counter
 from pathlib import Path
 
