@@ -23,6 +23,9 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
+# O runtime não precisa de pip: remover tira da imagem as CVEs dele e uma ferramenta útil para um invasor
+RUN python -m pip uninstall -y pip && rm -rf /root/.cache
+
 COPY --from=builder /install /usr/local
 WORKDIR /srv
 COPY --chown=root:root --chmod=0555 app ./app

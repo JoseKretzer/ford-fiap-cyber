@@ -8,7 +8,9 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /srv
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Depois de instalar as dependências, remove o pip: o runtime não precisa dele (menos CVEs e superfície)
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall -y pip && rm -rf /root/.cache
 COPY --chown=root:root --chmod=0444 ingestion.py .
 USER 10001:10001
 EXPOSE 9101

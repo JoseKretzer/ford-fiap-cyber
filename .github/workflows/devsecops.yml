@@ -187,7 +187,18 @@ jobs:
           docker buildx build --load -t vinshare-api:scan api
           docker buildx build --load -t vinshare-ingestion:scan iot
 
-      - name: Trivy - vulnerabilidades da imagem da API
+      - name: Trivy - imagem da API (relatório SARIF para a aba Security)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: vinshare-api:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: sarif
+          output: trivy-api.sarif
+
+      - name: Trivy - vulnerabilidades da imagem da API (gate; tabela no log)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
@@ -195,8 +206,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
-          format: sarif
-          output: trivy-api.sarif
+          format: table
 
       - name: Trivy - vulnerabilidades da imagem da ingestão IoT
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
