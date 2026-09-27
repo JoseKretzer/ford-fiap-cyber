@@ -18,7 +18,7 @@ Learning de previsão de churn.
 
 ## Documento de entrega
 
-O documento oficial desta Sprint é **[docs/Sprint3_Cybersecurity_Ford_VINShare.docx](docs/Sprint3_Cybersecurity_Ford_VINShare.docx)**.
+O documento oficial desta Sprint é **[docs/Sprint3_Cybersecurity_Ford_VINShare.docx](docs/Sprint3_Cybersecurity_Ford_VINShare.pdf)**.
 
 Ele é um arquivo único, organizado pelas 4 subetapas do enunciado, e a seção **0.3** liga cada requisito do
 enunciado à seção do documento e ao arquivo do repositório que o atende. O restante deste repositório é a
