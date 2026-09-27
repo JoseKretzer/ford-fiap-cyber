@@ -269,7 +269,9 @@ jobs:
     name: 6 · Deploy staging
     runs-on: ubuntu-latest
     needs: build-and-scan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Só com a variável de repositório DEPLOY_ENABLED=true (exige o AKS e os secrets do Azure configurados);
+    # sem ela, deploy, DAST e produção ficam como "skipped" e os gates 1-5 continuam valendo.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
     environment: staging
     permissions:
       contents: read
