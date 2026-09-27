@@ -79,7 +79,7 @@ jobs:
             --config p/typescript --config .semgrep/vinshare-rules.yml \
             --exclude .semgrep \
             --severity ERROR --severity WARNING \
-            --sarif --output semgrep.sarif --error
+            --text --sarif-output=semgrep.sarif --error   # achados no log + SARIF para a aba Security
       - name: Bandit (padrões inseguros em Python; severidade média ou maior bloqueia)
         run: bandit -r api/app iot -x iot/tests -ll -ii
       - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
