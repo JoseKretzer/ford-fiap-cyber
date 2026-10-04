@@ -57,7 +57,7 @@ services:
     ports: ["127.0.0.1:3100:3100"]
 
   alloy:
-    image: grafana/alloy:v1.20.0
+    image: grafana/alloy:v1.20.1
     command: ["run", "/etc/alloy/config.alloy"]
     volumes:
       - ../observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
