@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Serviço de ingestão de telemetria (mesmas práticas da imagem da API)
-FROM python:3.13-slim-trixie
+FROM python:3.14-slim-trixie
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
