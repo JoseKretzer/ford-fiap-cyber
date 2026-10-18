@@ -65,7 +65,7 @@ services:
     depends_on: [loki]
 
   grafana:
-    image: grafana/grafana:13.2.2
+    image: grafana/grafana:13.2.4
     environment:
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
       GF_AUTH_ANONYMOUS_ENABLED: "false"
