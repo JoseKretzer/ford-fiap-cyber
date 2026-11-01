@@ -3,13 +3,13 @@
 # Verificada no pipeline por: Trivy (vulnerabilidades + misconfig) e hadolint.
 
 # ---------- estágio 1: instala dependências (tem pip/compilador, NÃO vai para produção)
-FROM python:3.13-slim-trixie AS builder
+FROM python:3.15-slim-trixie AS builder
 WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ---------- estágio 2: runtime mínimo
-FROM python:3.13-slim-trixie
+FROM python:3.15-slim-trixie
 LABEL org.opencontainers.image.source="https://github.com/ORG/ford-vinshare" \
       org.opencontainers.image.description="Ford VIN Share API"
 
